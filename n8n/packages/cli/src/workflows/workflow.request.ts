@@ -26,6 +26,7 @@ export declare namespace WorkflowRequest {
 		projectId: string;
 		parentFolderId?: string;
 		uiContext?: string;
+		tenentID?:string;
 	}>;
 
 	type ManualRunPayload = {

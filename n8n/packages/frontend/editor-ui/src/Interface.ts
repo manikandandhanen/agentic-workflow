@@ -250,6 +250,7 @@ export interface IWorkflowDb {
 	versionId: string;
 	usedCredentials?: IUsedCredential[];
 	meta?: WorkflowMetadata;
+	tenentID?: string;  
 	parentFolder?: {
 		id: string;
 		name: string;

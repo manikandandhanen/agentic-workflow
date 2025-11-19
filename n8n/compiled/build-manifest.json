@@ -1,9 +1,9 @@
 {
-  "buildTime": "2025-11-19T10:48:55.526Z",
-  "artifactSize": "1.1G",
+  "buildTime": "2025-11-19T13:06:01.311Z",
+  "artifactSize": "1.4G",
   "buildDuration": {
-    "packageBuild": 137,
-    "packageDeploy": 48,
-    "total": 194
+    "packageBuild": 11,
+    "packageDeploy": 59,
+    "total": 72
   }
 }

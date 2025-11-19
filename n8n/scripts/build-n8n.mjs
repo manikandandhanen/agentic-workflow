@@ -149,7 +149,7 @@ if (process.env.CI !== 'true') {
 	}
 }
 // Run FE trim script
-await $`cd ${config.rootDir} && node .github/scripts/trim-fe-packageJson.js`;
+// await $`cd ${config.rootDir} && node .github/scripts/trim-fe-packageJson.js`;
 echo(chalk.yellow('INFO: Performing selective patch cleanup...'));
 
 const packageJsonPath = path.join(config.rootDir, 'package.json');

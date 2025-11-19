@@ -21,6 +21,7 @@ export interface WorkflowData {
 	pinData?: IPinData;
 	versionId?: string;
 	meta?: WorkflowMetadata;
+	tenentID?: string;  
 }
 
 export interface WorkflowDataUpdate {
@@ -36,6 +37,7 @@ export interface WorkflowDataUpdate {
 	meta?: WorkflowMetadata;
 	parentFolderId?: string;
 	uiContext?: string;
+	tenentID?: string;  
 }
 
 export interface WorkflowDataCreate extends WorkflowDataUpdate {

@@ -119,6 +119,7 @@ services:
       - N8N_DISABLE_UI_SECURITY=true
       - N8N_XFRAME_BYPASS=true
       - N8N_TRUST_PROXY=true
+      - N8N_SKIP_ORIGIN_CHECK=true 
     # no host port, only internal
     # ports:
     #   - "5678:5678"
