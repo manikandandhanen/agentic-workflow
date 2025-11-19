@@ -1,0 +1,241 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Tools — Upload Schema & MCP Tools</title>
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <style>
+      body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial; padding: 24px; color:#111; }
+      h1 { margin-bottom: 6px; }
+      .card { border: 1px solid #e2e8f0; padding: 16px; border-radius: 8px; margin-bottom: 16px; background:#fff;}
+      label { display:block; margin:8px 0 4px; font-weight:600; }
+      select,input[type=text],button { padding:8px; border-radius:6px;border:1px solid #cbd5e1; }
+      input[type=file] { margin-top:6px; }
+      button { cursor:pointer; background:#2563eb;color:#fff;border:none; }
+      pre { background:#0f172a;color:#e6eef8;padding:12px;border-radius:6px; overflow:auto; max-height:360px;}
+      .muted { color:#64748b; font-size:0.95rem }
+      .flex { display:flex; gap:12px; align-items:center; }
+      .inline { display:inline-block; margin-right:8px; }
+      .success { color: #065f46; font-weight:600; }
+      .error { color: #b91c1c; font-weight:600; }
+    </style>
+  </head>
+  <body>
+    <h1>Upload Schema (YAML / JSON)</h1>
+    <p class="muted">Select a provider, pick the schema kind and upload a .yaml/.yml/.json file. The server will persist a SchemaSource and auto-normalize into capabilities. After upload, this page will refresh the MCP tool list so you can confirm newly-registered tools.</p>
+
+    <div class="card" id="uploader">
+      <label for="provider">Provider</label>
+      <select id="provider"><option>Loading providers...</option></select>
+
+      <label for="kind">Schema Kind</label>
+      <select id="kind">
+        <option value="openapi">OpenAPI 3.x (openapi)</option>
+        <option value="graphql">GraphQL (graphql)</option>
+        <option value="asyncapi">AsyncAPI (asyncapi)</option>
+        <option value="grpc">gRPC / Protobuf (grpc)</option>
+        <option value="jsonschema">JSON Schema (jsonschema)</option>
+      </select>
+
+      <label for="file">Schema file (.yaml, .yml, .json)</label>
+      <input id="file" type="file" accept=".yaml,.yml,.json" />
+
+      <div style="margin-top:12px" class="flex">
+        <button id="uploadBtn">Upload & Normalize</button>
+        <div id="uploadStatus" class="muted">Idle</div>
+      </div>
+
+      <div style="margin-top:12px;">
+        <label for="toolsBase">Tools server URL (for listing tools)</label>
+        <input id="toolsBase" style="width: 75%" type="text" value="http://localhost:8089/core/tools/api/v1.0/capabilities/?tenant={tenant-slug}&team={team-slug}&active=true" placeholder="/tools-server/url for now and later https://mcp.server/api/tools" />
+        <!-- I.e.: http://localhost:8089/core/tools/api/v1.0/capabilities/?tenant=core-it&team=corporate-it&active=true -->
+        <div class="muted" style="margin-top:6px">If your MCP server is not reachable at the default path, enter an absolute URL.</div>
+      </div>
+    </div>
+ 
+    <div class="card">
+      <h2>Core Server Registered Tools (Ready for MCP hot-reloader)</h2>
+      <div style="margin-bottom:8px">
+        <button id="refreshTools">Refresh tools</button>
+        <span id="toolsStatus" class="muted">Not loaded</span>
+      </div>
+      <pre id="toolsOut">No data yet</pre>
+    </div>
+
+    <div class="card">
+      <h2>Server Response</h2>
+      <pre id="responseOut">No uploads yet</pre>
+    </div>
+
+    <script>
+      (function () {
+        const providerSelect = document.getElementById("provider");
+        const kindSelect = document.getElementById("kind");
+        const fileInput = document.getElementById("file");
+        const uploadBtn = document.getElementById("uploadBtn");
+        const uploadStatus = document.getElementById("uploadStatus");
+        const responseOut = document.getElementById("responseOut");
+        const toolsOut = document.getElementById("toolsOut");
+        const refreshToolsBtn = document.getElementById("refreshTools");
+        const toolsStatus = document.getElementById("toolsStatus");
+        const toolsBaseInput = document.getElementById("toolsBase");
+
+        // API roots used by template — these are the expected endpoints in this repo
+        // NOTE: These are relative paths used for convenience in a typical dev environment.
+        const PROVIDERS_API = "/core/tools/api/v1.0/providers/";
+        const SCHEMAS_API   = "/core/tools/api/v1.0/schemas/?auto_normalize=true";
+
+        function fmtJson(obj) {
+          try { return JSON.stringify(obj, null, 2); } catch(e){ return String(obj); }
+        }
+
+        async function loadProviders() {
+          providerSelect.innerHTML = '<option>Loading providers...</option>';
+          try {
+            const r = await fetch(PROVIDERS_API, { credentials: "same-origin", headers: {
+              "Authorization": "Bearer jTAQ4nhPBu_an_Z4LiaY5YtDW9GpdR_y2jdHHej4",
+            } });
+            if (!r.ok) {
+              providerSelect.innerHTML = '<option value="">(failed to load providers)</option>';
+              console.error("Failed loading providers", r.status);
+              return;
+            }
+            const data = await r.json();
+            // expecting list of providers
+            providerSelect.innerHTML = "";
+            if (!Array.isArray(data) || data.length === 0) {
+              providerSelect.innerHTML = '<option value="">(no providers found)</option>';
+              return;
+            }
+            data.forEach(p => {
+              const opt = document.createElement("option");
+              opt.value = p.id || p.pk || p.url || p.name;
+              opt.textContent = p.name ? `${p.name} (${opt.value})` : String(opt.value);
+              providerSelect.appendChild(opt);
+            });
+          } catch (e) {
+            providerSelect.innerHTML = '<option value="">(error loading providers)</option>';
+            console.error(e);
+          }
+        }
+
+        async function listTools() {
+          toolsStatus.textContent = "Loading...";
+          toolsOut.textContent = "";
+          const base = (toolsBaseInput.value || "").trim();
+          if (!base) {
+            toolsStatus.textContent = "Invalid MCP URL";
+            toolsOut.textContent = "Enter a MCP /tools URL above and click Refresh.";
+            return;
+          }
+          // Determine absolute vs relative
+          let url = base;
+          // if user supplied relative like /tools, use as-is
+          try {
+            const r = await fetch(url, { credentials: "same-origin", headers: {
+              "Authorization": "Bearer jTAQ4nhPBu_an_Z4LiaY5YtDW9GpdR_y2jdHHej4",
+            } });
+            if (r.status === 0) {
+              toolsStatus.textContent = "Network error";
+              toolsOut.textContent = "(network error)";
+              return;
+            }
+            if (r.status === 404) {
+              // helpful hint
+              toolsStatus.textContent = "Not found (404)";
+              const txt = await r.text();
+              toolsOut.textContent = `404 Not found\n\n${txt}`;
+              return;
+            }
+            if (!r.ok) {
+              toolsStatus.textContent = `HTTP ${r.status}`;
+              const txt = await r.text();
+              toolsOut.textContent = txt || `HTTP ${r.status}`;
+              return;
+            }
+            const payload = await r.json();
+            toolsStatus.textContent = `Loaded ${Array.isArray(payload) ? payload.length : "?"} tools`;
+            toolsOut.textContent = fmtJson(payload);
+          } catch (e) {
+            toolsStatus.textContent = "Error";
+            toolsOut.textContent = String(e);
+            console.error(e); 
+          }
+        }
+
+        async function uploadSchema() {
+          uploadStatus.textContent = "Preparing upload...";
+          const f = fileInput.files && fileInput.files[0];
+          if (!f) {
+            uploadStatus.innerHTML = '<span class="error">Choose a file first</span>';
+            return;
+          }
+          const provider = providerSelect.value;
+          if (!provider) {
+            uploadStatus.innerHTML = '<span class="error">Choose a provider</span>';
+            return;
+          }
+          const kind = kindSelect.value;
+
+          // Validate filename extension
+          const name = (f.name || "").toLowerCase();
+          if (!name.endsWith(".yaml") && !name.endsWith(".yml") && !name.endsWith(".json")) {
+            uploadStatus.innerHTML = '<span class="error">Only .yaml/.yml/.json files are allowed</span>';
+            return;
+          }
+
+          const fd = new FormData();
+          fd.append("provider", provider);
+          fd.append("kind", kind);
+          fd.append("blob", f);
+          fd.append("auto_normalize", "true");
+
+          uploadBtn.disabled = true;
+          uploadStatus.textContent = "Uploading...";
+          try {
+            const r = await fetch(SCHEMAS_API, {
+              method: "POST",
+              body: fd,
+              credentials: "same-origin",
+              headers: {
+                "Authorization": "Bearer jTAQ4nhPBu_an_Z4LiaY5YtDW9GpdR_y2jdHHej4",
+              },
+            });
+
+            const text = await r.text();
+            let data;
+            try { data = JSON.parse(text); } catch(e){ data = text; }
+
+            if (!r.ok) {
+              uploadStatus.innerHTML = `<span class="error">Upload failed: ${r.status}</span>`;
+              responseOut.textContent = fmtJson(data);
+            } else {
+              uploadStatus.innerHTML = '<span class="success">Upload & normalize succeeded</span>';
+              responseOut.textContent = fmtJson(data);
+              // Attempt to refresh tools list automatically after successful normalization.
+              // Wait a moment to allow hot-reloader / webhook to propagate.
+              setTimeout(() => {
+                listTools();
+              }, 1200);
+            }
+          } catch (e) {
+            uploadStatus.innerHTML = '<span class="error">Network error</span>';
+            responseOut.textContent = String(e);
+            console.error(e);
+          } finally {
+            uploadBtn.disabled = false;
+          }
+        }
+
+        // Wire up events
+        uploadBtn.addEventListener("click", (ev) => { ev.preventDefault(); uploadSchema(); });
+        refreshToolsBtn.addEventListener("click", (ev) => { ev.preventDefault(); listTools(); });
+
+        // initial load
+        loadProviders().then(() => { providerSelect.dispatchEvent(new Event("change")); });
+        // initial tools list (best-effort)
+        listTools();
+      })();
+    </script>
+  </body>
+</html>

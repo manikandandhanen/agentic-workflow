@@ -1,0 +1,153 @@
+x-ignore-dev: &ignore_dev
+  ignore: 
+  - ../platform/tools-server/.env
+  - ../platform/tools-server/.env.*
+  - ../platform/tools-server/.venv
+  - ../platform/tools-server/.gitignore
+  - ../platform/tools-server/.gitattributes
+  - ../platform/tools-server/__pycache__
+  - ../platform/tools-server/'*.pyc'
+  - ../platform/tools-server/'*.log'
+  - ../platform/tools-server/docker_dev/Dockerfile
+  - ../platform/tools-server/docker_test/
+  - ../platform/tools-server/docker/
+
+services:
+  dev_tools-server:
+    build:
+      context: ../platform/tools-server
+      dockerfile: dev_docker/Dockerfile
+      args:
+        - USERNAME=qgpadmin
+        - USER_UID=1001
+        - USER_GID=1001
+    container_name: dev-core-tools-server
+    env_file:
+      - ../platform/tools-server/.env.dev
+    develop:
+      # Create a `watch` configuration to update the app
+      #
+      watch:
+        # Sync the working directory with the `/app` directory in the container
+        - action: sync
+          path: ../platform/tools-server
+          target: /app
+          <<: *ignore_dev
+
+        # Rebuild the image on changes to the `pyproject.toml`
+        - action: rebuild
+          path: ../platform/tools-server/pyproject.toml
+        
+        # Rebuild the image on changes to the Dockerfile
+        - action: rebuild
+          path: ../platform/tools-server/dev_docker/Dockerfile
+        
+        # Rebuild the image on changes to tools migrations files
+        - action: rebuild
+          path: ../platform/tools-server/tools/migrations
+
+        # Rebuild the image on changes to accounts migrations files
+        - action: rebuild
+          path: ../platform/tools-server/accounts/migrations
+
+        # Rebuild the image on changes to core settings files
+        - action: rebuild
+          path: ../platform/tools-server/core/settings
+
+    ports:
+      - "8089:8005"
+    volumes:
+      - dev_static-files:/app/static
+      - dev_app-schemas:/app/media
+      - ../platform/tools-server/logs:/app/logs
+    depends_on:
+      - dev_db
+      - dev_redis
+    restart: unless-stopped
+    networks:
+      - dev_miq_network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8005/healthz/ || exit 1"]
+      interval: 30s
+      timeout: 60s
+      retries: 5
+
+  dev_db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: miq
+      POSTGRES_PASSWORD: miqpassword
+      POSTGRES_DB: miqdb
+    volumes:
+      - dev_pgdata:/var/lib/postgresql/data
+    ports:
+      - "5434:5432"
+    restart: unless-stopped
+    networks:
+      - dev_miq_network
+
+  dev_redis:
+    image: redis:7-alpine
+    ports:
+      - "6381:6379"
+    volumes:
+      - dev_redisdata:/data
+    restart: unless-stopped
+    networks:
+      - dev_miq_network
+  n8n:
+    build:
+      context: ../n8n
+      dockerfile: docker/images/n8n-dev/Dockerfile
+    container_name: n8n
+    environment:
+      - N8N_BASIC_AUTH_ACTIVE=true
+      - N8N_BASIC_AUTH_USER=${N8N_USER:-admin@example.com}
+      - N8N_BASIC_AUTH_PASSWORD=${N8N_PASSWORD:-admin}
+      - N8N_FEATURE_FLAG_CREDENTIAL_SHARING=true
+      - N8N_HOST=n8n
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=http
+      # IMPORTANT: external URL seen by browser (through nginx)
+      - N8N_EDITOR_BASE_URL=${N8N_EDITOR_BASE_URL:-http://localhost:8090/}
+      - N8N_API_BASE_URL=${N8N_API_BASE_URL:-http://localhost:8090/}
+      - N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS=true
+      - N8N_DEFAULT_WORKFLOW_ACTIVE=true
+      - N8N_DEFAULT_WORKFLOW=${N8N_DEFAULT_WORKFLOW:-1}
+      - N8N_AUTHENTICATION=email
+      - N8N_SSO_SECRET=dev-n8n-sso-secret
+      - N8N_DISABLE_UI_SECURITY=true
+      - N8N_XFRAME_BYPASS=true
+      - N8N_TRUST_PROXY=true
+    # no host port, only internal
+    # ports:
+    #   - "5678:5678"
+    volumes:
+      - n8n_data:/home/node/.n8n
+    depends_on:
+      - dev_db
+    networks:
+      - dev_miq_network
+
+  nginx:
+    image: nginx:alpine
+    container_name: nginx
+    depends_on:
+      - n8n
+    ports:
+      - "8090:80"          # <- only this is exposed to host
+    networks:
+      - dev_miq_network
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+
+volumes:
+  dev_pgdata:
+  dev_redisdata:
+  dev_app-schemas:
+  dev_static-files:
+  n8n_data:
+
+networks:
+  dev_miq_network:
+    driver: bridge

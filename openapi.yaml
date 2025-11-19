@@ -1,0 +1,313 @@
+openapi: 3.0.3
+info:
+  title: IT Ticketing Tool API V5
+  version: 1.0.0
+  description: |
+    Example IT Ticketing Tool schema for upload to the Tools-Server.
+    Includes governance metadata (tenant/team/scopes) for dynamic registration.
+
+x-tenant: "corp-it"
+x-team: "service-desk"
+x-visibility: "tenant"   # could be tenant | team | global
+x-enabled: true
+x-hot-reload: true
+
+servers:
+  - url: https://ticketing.example.com/api
+
+tags:
+  - name: Tickets
+    description: Ticket lifecycle operations
+    x-scopes: ["tickets:read", "tickets:write", "tickets:delete"]
+  - name: Comments
+    description: Ticket comments
+    x-scopes: ["comments:read", "comments:write"]
+
+paths:
+  /create_tickets:
+    post:
+      tags: [Tickets]
+      summary: Create a new ticket
+      operationId: createTicket
+      x-tenant: "corp-it"
+      x-team: "service-desk"
+      x-scopes: ["tickets:write"]
+      x-hot-reload: true
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TicketCreate'
+            examples:
+              default:
+                value:
+                  title: "VPN not connecting"
+                  description: "User cannot connect to VPN from home network."
+                  priority: "high"
+                  requester: "alex@example.com"
+      responses:
+        '201':
+          description: Ticket created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Ticket'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /update-ticket:
+    patch:
+      tags: [Tickets]
+      summary: Update an existing ticket
+      operationId: updateTicket
+      x-tenant: "corp-it"
+      x-team: "service-desk"
+      x-scopes: ["tickets:write"]
+      x-hot-reload: true
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Ticket ID to update
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TicketUpdate'
+            examples:
+              statusOnly:
+                value:
+                  status: "in_progress"
+              assignAndPriority:
+                value:
+                  assignee: "it.tech@example.com"
+                  priority: "urgent"
+      responses:
+        '200':
+          description: Ticket updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Ticket'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /delete_ticket:
+    delete:
+      tags: [Tickets]
+      summary: Delete a ticket
+      operationId: deleteTicket
+      x-tenant: "corp-it"
+      x-team: "service-desk"
+      x-scopes: ["tickets:delete"]
+      x-hot-reload: true
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Ticket ID to delete
+      responses:
+        '204':
+          description: Ticket deleted
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /add_comment:
+    post:
+      tags: [Comments]
+      summary: Add a comment to a ticket
+      operationId: addComment
+      x-tenant: "corp-it"
+      x-team: "service-desk"
+      x-scopes: ["comments:write"]
+      x-hot-reload: true
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: ticketId
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Ticket ID to comment on
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CommentInput'
+            examples:
+              default:
+                value:
+                  body: "We’re investigating the VPN gateway logs."
+                  visibility: "internal"
+      responses:
+        '201':
+          description: Comment added
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Comment'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  responses:
+    BadRequest:
+      description: Invalid request
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Unauthorized:
+      description: Missing or invalid credentials
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+  schemas:
+    Ticket:
+      type: object
+      required: [id, title, status, priority]
+      properties:
+        id:
+          type: string
+          example: "TCK-10023"
+        title:
+          type: string
+        description:
+          type: string
+        status:
+          type: string
+          enum: [open, in_progress, resolved, closed]
+          example: open
+        priority:
+          type: string
+          enum: [low, medium, high, urgent]
+          example: high
+        requester:
+          type: string
+          format: email
+        assignee:
+          type: string
+          format: email
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    TicketCreate:
+      type: object
+      required: [title, requester]
+      properties:
+        title:
+          type: string
+        description:
+          type: string
+        priority:
+          type: string
+          enum: [low, medium, high, urgent]
+          default: medium
+        requester:
+          type: string
+          format: email
+
+    TicketUpdate:
+      type: object
+      properties:
+        title:
+          type: string
+        description:
+          type: string
+        status:
+          type: string
+          enum: [open, in_progress, resolved, closed]
+        priority:
+          type: string
+          enum: [low, medium, high, urgent]
+        assignee:
+          type: string
+          format: email
+
+    CommentInput:
+      type: object
+      required: [body]
+      properties:
+        body:
+          type: string
+        visibility:
+          type: string
+          enum: [public, internal]
+          default: public
+
+    Comment:
+      type: object
+      required: [id, ticketId, body, visibility, createdAt]
+      properties:
+        id:
+          type: string
+          example: "CMT-7788"
+        ticketId:
+          type: string
+          example: "TCK-10023"
+        body:
+          type: string
+        visibility:
+          type: string
+          enum: [public, internal]
+        author:
+          type: string
+          format: email
+          example: "it.tech@example.com"
+        createdAt:
+          type: string
+          format: date-time
+
+    Error:
+      type: object
+      required: [message]
+      properties:
+        message:
+          type: string
+        code:
+          type: string
+          example: "bad_request"

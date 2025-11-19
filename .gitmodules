@@ -1,0 +1,3 @@
+[submodule "tools-server"]
+	path = platform/tools-server
+	url = https://itqsoc@dev.azure.com/itqsoc/AI%20Innovations%20Lab/_git/miq_tools_server

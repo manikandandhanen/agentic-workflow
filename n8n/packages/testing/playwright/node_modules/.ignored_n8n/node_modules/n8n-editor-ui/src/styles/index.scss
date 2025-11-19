@@ -1,0 +1,14 @@
+@use 'variables';
+@use 'plugins';
+@use 'global';
+@use 'animations';
+
+
+:root {
+  --color-primary: #155eef;     /* deep brand blue */
+  --color-accent:  #8a5cff;     /* accent */
+}
+
+.n8n-header, .n8n-sidebar {
+  background: linear-gradient(135deg, #155eef, #8a5cff);
+}

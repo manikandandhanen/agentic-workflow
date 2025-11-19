@@ -1,0 +1,17 @@
+:root {
+  --color-primary: #155eef;     /* deep brand blue */
+  --color-accent:  #8a5cff;     /* accent */
+}
+.n8n-header, .n8n-sidebar {
+  background: linear-gradient(135deg, #155eef, #8a5cff);
+}
+ 
+._button_zpi3n_123{
+  background: rgb(99, 91, 255) !important;
+  color:#fff !important;        
+  border:none;
+}
+
+._button_zpi3n_123:hover{
+    color:#fff !important;
+}

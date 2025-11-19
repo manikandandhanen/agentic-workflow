@@ -1,0 +1,24 @@
+[project]
+name = "tools-server"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "django==5.2",
+    "django-cors-headers>=4.9.0",
+    "django-redis>=6.0.0",
+    "django-storages[azure]>=1.14.6",
+    "djangorestframework>=3.16.1",
+    "djoser>=2.3.3",
+    "drf-spectacular>=0.28.0",
+    "factory-boy>=3.3.3",
+    "httptools>=0.7.1",
+    "psycopg2-binary>=2.9.11",
+    "python-decouple>=3.8",
+    "pyyaml>=6.0.3",
+    "rest-framework-simplejwt>=0.0.2",
+    "uvicorn>=0.38.0",
+    "uvloop>=0.22.1",
+    "wheel>=0.45.1",
+]
