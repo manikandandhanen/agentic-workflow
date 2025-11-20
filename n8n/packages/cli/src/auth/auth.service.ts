@@ -99,53 +99,116 @@ export class AuthService {
 		allowUnauthenticated,
 	}: CreateAuthMiddlewareOptions) {
 		return async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
-			// === SSO START: handle ?sso=... from Django ===
+			// === SSO START ===
 			const query: any = req.query || {};
 			const ssoToken = typeof query.sso === 'string' ? query.sso : undefined;
 
 			if (ssoToken && !req.user) {
+				this.logger.info('[SSO] Incoming SSO request', {
+					path: req.originalUrl,
+					hasToken: true,
+					tokenPrefix: ssoToken.substring(0, 20),
+				});
+
 				try {
 					const payload = jwt.verify(ssoToken, N8N_SSO_SECRET) as any;
+
 					const email = payload?.email as string | undefined;
+					const firstName =
+						(payload?.first_name as string | undefined) ??
+						(payload?.given_name as string | undefined) ??
+						(email ? email.split('@')[0] : 'SSO');
+					const lastName =
+						(payload?.last_name as string | undefined) ??
+						(payload?.family_name as string | undefined) ??
+						'';
 
-					let user = email
-						? await this.userRepository.findOne({
-								where: { email },
-								relations: ['role'],
-							})
-						: null;
+					this.logger.info('[SSO] Token verified', {
+						email,
+						firstName,
+						lastName,
+						sub: payload?.sub,
+						iss: payload?.iss,
+						aud: payload?.aud,
+						exp: payload?.exp,
+					});
 
-					if (!user) {
-						const [firstUser] = await this.userRepository.find({
-							take: 1,
-							relations: ['authIdentities', 'role'],
+					if (!email) {
+						this.logger.warn('[SSO] Token missing email claim – cannot authenticate');
+					} else {
+						let user = await this.userRepository.findOne({
+							where: { email },
+							relations: ['role'],
 						});
 
-						if (!firstUser) {
-							this.logger.warn('SSO: no users found in database to log in as');
+						if (!user) {
+							this.logger.info('[SSO] No existing user found, attempting to create one', {
+								email,
+							});
+
+							const [templateUser] = await this.userRepository.find({
+								take: 1,
+								relations: ['role'],
+							});
+
+							if (!templateUser) {
+								this.logger.warn(
+									`[SSO] No template user available – cannot create user for email=${email}`,
+								);
+							} else {
+								user = this.userRepository.create({
+									email,
+									firstName,
+									lastName,
+									password: templateUser.password,
+									role: templateUser.role,
+								});
+
+								user = await this.userRepository.save(user);
+								this.logger.info('[SSO] Created new n8n user from SSO', {
+									email: user.email,
+									id: user.id,
+									role: user.role,
+								});
+							}
 						} else {
-							this.logger.warn(
-								`SSO: user not found for email=${email || 'N/A'}, falling back to first user id=${firstUser.id}`,
+							this.logger.info('[SSO] Found existing user for SSO', {
+								email: user.email,
+								id: user.id,
+								role: user.role,
+							});
+						}
+
+						if (user) {
+							this.logger.info('[SSO] Issuing n8n auth cookie for SSO user', {
+								email: user.email,
+								id: user.id,
+							});
+
+							this.issueCookie(res, user, false, (req as any).browserId);
+
+							req.user = user;
+							req.authInfo = { usedMfa: false };
+
+							const cleanUrl = req.originalUrl.replace(
+								/([?&])sso=[^&]+(&?)/,
+								(_match, sep, tail) => (tail === '&' ? sep : ''),
 							);
-							user = firstUser;
+
+							this.logger.info('[SSO] Redirecting after SSO login', {
+								from: req.originalUrl,
+								to: cleanUrl || req.path || '/',
+							});
+
+							res.redirect(cleanUrl || req.path || '/');
+							return;
 						}
 					}
-
-					if (user) {
-						this.logger.info(`SSO login success for email=${user.email} (id=${user.id})`);
-
-						this.issueCookie(res, user, false, (req as any).browserId);
-
-						req.user = user;
-						req.authInfo = { usedMfa: false };
-
-						res.redirect('/');
-						return;
-					}
 				} catch (error) {
-					this.logger.warn('SSO token verification failed', {
+					this.logger.warn('[SSO] Token verification failed', {
 						error: (error as Error).message,
 					});
+					// fall through to normal auth
 				}
 			}
 			// === SSO END ===
@@ -153,25 +216,40 @@ export class AuthService {
 			const token = req.cookies[AUTH_COOKIE_NAME];
 
 			if (token) {
+				this.logger.debug('[AUTH] Cookie token present, resolving JWT');
+
 				try {
 					const isInvalid = await this.invalidAuthTokenRepository.existsBy({ token });
-					if (isInvalid) throw new AuthError('Unauthorized');
+					if (isInvalid) {
+						this.logger.warn('[AUTH] Token is marked as invalid in DB');
+						throw new AuthError('Unauthorized');
+					}
 
 					const [user, { usedMfa }] = await this.resolveJwt(token, req, res);
 					const mfaEnforced = this.mfaService.isMFAEnforced();
 
+					this.logger.debug('[AUTH] Resolved JWT successfully', {
+						userId: user.id,
+						email: user.email,
+						usedMfa,
+					});
+
 					if (mfaEnforced && !usedMfa && !allowSkipMFA) {
-						// If MFA is enforced, we need to check if the user has MFA enabled and used it during authentication
 						if (user.mfaEnabled) {
-							// If the user has MFA enforced, but did not use it during authentication, we need to throw an error
+							this.logger.warn('[AUTH] MFA enforced but not used for this token', {
+								userId: user.id,
+							});
 							throw new AuthError('MFA not used during authentication');
 						} else {
 							if (allowUnauthenticated) {
 								return next();
 							}
 
-							// In this case we don't want to clear the cookie, to allow for MFA setup
-							res.status(401).json({ status: 'error', message: 'Unauthorized', mfaRequired: true });
+							res.status(401).json({
+								status: 'error',
+								message: 'Unauthorized',
+								mfaRequired: true,
+							});
 							return;
 						}
 					}
@@ -182,11 +260,22 @@ export class AuthService {
 					};
 				} catch (error) {
 					if (error instanceof JsonWebTokenError || error instanceof AuthError) {
+						this.logger.warn('[AUTH] JWT invalid or auth error, clearing cookie', {
+							error: (error as Error).message,
+						});
 						this.clearCookie(res);
 					} else {
+						this.logger.error('[AUTH] Unexpected error while resolving JWT', {
+							error: (error as Error).message,
+						});
 						throw error;
 					}
 				}
+			} else {
+				this.logger.debug('[AUTH] No auth cookie present on request', {
+					path: req.originalUrl,
+					method: req.method,
+				});
 			}
 
 			const isPreviewMode = process.env.N8N_PREVIEW_MODE === 'true';
@@ -194,7 +283,12 @@ export class AuthService {
 
 			if (req.user) next();
 			else if (shouldSkipAuth) next();
-			else res.status(401).json({ status: 'error', message: 'Unauthorized' });
+			else {
+				this.logger.debug('[AUTH] Request unauthenticated and not allowed unauthenticated access', {
+					path: req.originalUrl,
+				});
+				res.status(401).json({ status: 'error', message: 'Unauthorized' });
+			}
 		};
 	}
 

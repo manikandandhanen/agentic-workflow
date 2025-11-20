@@ -45,6 +45,13 @@ export const useWebSocketClient = <T>(options: UseWebSocketClientOptions<T>) => 
 	const onConnectionLost = (event: CloseEvent) => {
 		console.warn(`[WebSocketClient] Connection lost, code=${event.code ?? 'unknown'}`);
 		disconnect();
+
+		// If server says "policy violation", don't hammer it with reconnects
+		if (event.code === 1008) {
+			console.warn('[WebSocketClient] Policy violation (1008) - not retrying automatically');
+			return;
+		}
+
 		reconnectTimer.scheduleReconnect();
 	};
 

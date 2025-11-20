@@ -91,6 +91,8 @@ def create_n8n_sso_token(user, expires_in_minutes: int = 5) -> str:
     payload = {
         "sub": str(user.id),
         "email": user.email,
+        "first_name": user.first_name or "",
+        "last_name": user.last_name or "",
         "tenant": {
             "id": str(user.tenant_id) if user.tenant_id else None,
             "slug": getattr(user.tenant, "slug", None),

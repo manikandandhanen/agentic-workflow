@@ -440,7 +440,7 @@ export class WorkflowRepository extends Repository<WorkflowEntity> {
 		this.applyIsArchivedFilter(qb, filter);
 		this.applyTagsFilter(qb, filter);
 		this.applyProjectFilter(qb, filter);
-		this.applyTenentIdFilter(qb, filter);
+		// this.applyTenentIdFilter(qb, filter);
 		this.applyParentFolderFilter(qb, filter);
 		this.applyNodeTypesFilter(qb, filter);
 		this.applyAvailableInMCPFilter(qb, filter);
@@ -608,7 +608,7 @@ export class WorkflowRepository extends Repository<WorkflowEntity> {
 				'workflow.updatedAt',
 				'workflow.versionId',
 				'workflow.settings',
-				'workflow.tenentID'
+				// 'workflow.tenentID'
 			]);
 			return;
 		}
@@ -829,13 +829,13 @@ export class WorkflowRepository extends Repository<WorkflowEntity> {
 		return await qb.getMany();
 	}
 
-	private applyTenentIdFilter(
-		qb: SelectQueryBuilder<WorkflowEntity>,
-		filter?: ListQuery.Options['filter'],
-	): void {
-		if (typeof filter?.tenentID === 'string' && filter.tenentID !== '') {
-			qb.andWhere('workflow.tenentID = :tenentID', { tenentID: filter.tenentID });
-			// ^^^^^^^ use SAME alias as in other methods (probably "workflow")
-		}
-	}
+	// private applyTenentIdFilter(
+	// 	qb: SelectQueryBuilder<WorkflowEntity>,
+	// 	filter?: ListQuery.Options['filter'],
+	// ): void {
+	// 	if (typeof filter?.tenentID === 'string' && filter.tenentID !== '') {
+	// 		qb.andWhere('workflow.tenentID = :tenentID', { tenentID: filter.tenentID });
+	// 		// ^^^^^^^ use SAME alias as in other methods (probably "workflow")
+	// 	}
+	// }
 }

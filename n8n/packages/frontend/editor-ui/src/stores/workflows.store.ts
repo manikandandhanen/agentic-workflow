@@ -619,9 +619,9 @@ export const useWorkflowsStore = defineStore(STORES.WORKFLOWS, () => {
 		includeFolders = false,
 		onlySharedWithMe = false,
 	): Promise<WorkflowListResource[]> {
-		const tenentFilter = { tenentID: 'dummy-tenent-001' };
+		// const tenentFilter = { tenentID: 'dummy-tenent-001' };
 
-		const filter = { ...filters, projectId, ...tenentFilter };
+		const filter = { ...filters, projectId};
 		const options = {
 			skip: (page - 1) * pageSize,
 			take: pageSize,
@@ -665,10 +665,10 @@ export const useWorkflowsStore = defineStore(STORES.WORKFLOWS, () => {
 		tags?: string[];
 		select?: string[];
 	}): Promise<IWorkflowDb[]> {
-		const tenentFilter = { tenentID: 'dummy-tenent-001' };
+		// const tenentFilter = { tenentID: 'dummy-tenent-001' };
 
 		const filter = {
-			...tenentFilter,
+			// ...tenentFilter,
 			projectId,
 			name,
 			nodeTypes,
@@ -1510,14 +1510,14 @@ export const useWorkflowsStore = defineStore(STORES.WORKFLOWS, () => {
 		sendData.active = false;
 		const projectStore = useProjectsStore();
 
-		const tenantId = 'dummy-tenant-001';
+		// const tenantId = 'dummy-tenant-001';
 
 		const payload: IDataObject = {
 			...(sendData as unknown as IDataObject),
 			...(projectStore.currentProjectId && !sendData.projectId
 				? { projectId: projectStore.currentProjectId }
-				: {}),
-			tenentID: tenantId,
+				: {})
+			// tenentID: tenantId,
 		};
 
 		const newWorkflow = await makeRestApiRequest<IWorkflowDb>(
@@ -1557,9 +1557,9 @@ export const useWorkflowsStore = defineStore(STORES.WORKFLOWS, () => {
 			data as unknown as IDataObject,
 		);
 
-		if (!sendData.tenentID) {
-			(sendData as unknown as IDataObject).tenentID = 'dummy-tenant-001';
-		}
+		// if (!sendData.tenentID) {
+		// 	(sendData as unknown as IDataObject).tenentID = 'dummy-tenant-001';
+		// }
 
 		if (
 			workflowHelpers.containsNodeFromPackage(updatedWorkflow, AI_NODES_PACKAGE_NAME) &&
